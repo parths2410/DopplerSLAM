@@ -46,6 +46,7 @@ struct ResultTuple {
 
 namespace kiss_icp {
 
+// TODO: Add doppler velocities to the GetCorrespondences function
 VoxelHashMap::Vector3dVectorTuple VoxelHashMap::GetCorrespondences(
     const Vector3dVector &points, double max_correspondance_distance) const {
     // Lambda Function to obtain the KNN of one point, maybe refactor

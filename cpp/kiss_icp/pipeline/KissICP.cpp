@@ -52,8 +52,11 @@ KissICP::Vector3dVectorTuple KissICP::RegisterFrame(const std::vector<Eigen::Vec
     return RegisterFrame(deskew_frame);
 }
 
+
+// TODO: Add doppler velocities to the function signature
 KissICP::Vector3dVectorTuple KissICP::RegisterFrame(const std::vector<Eigen::Vector3d> &frame) {
     // Preprocess the input cloud
+    // TODO: Add doppler velocities to the Preprocess function
     const auto &cropped_frame = Preprocess(frame, config_.max_range, config_.min_range);
 
     // Voxelize
@@ -67,7 +70,10 @@ KissICP::Vector3dVectorTuple KissICP::RegisterFrame(const std::vector<Eigen::Vec
     const auto last_pose = !poses_.empty() ? poses_.back() : Sophus::SE3d();
     const auto initial_guess = last_pose * prediction;
 
+    // Maintain delta_ts
+
     // Run icp
+    // TODO: Add doppler velocities to the RegisterFrame function
     const Sophus::SE3d new_pose = kiss_icp::RegisterFrame(source,         //
                                                           local_map_,     //
                                                           initial_guess,  //

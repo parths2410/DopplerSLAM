@@ -117,8 +117,15 @@ Sophus::SE3d RegisterFrame(const std::vector<Eigen::Vector3d> &frame,
     TransformPoints(initial_guess, source);
 
     // ICP-loop
-    Sophus::SE3d T_icp = Sophus::SE3d();
+    Sophus::SE3d T_icp = Sophus::SE3d(); // TODO: Why is T_ICP initialized to the identity?
+    // TODO: Add doppler velocities to the ICP loop
     for (int j = 0; j < MAX_NUM_ITERATIONS_; ++j) {
+        // TODO : State_Vector from T_icp
+
+        // TODO : Find Velcoity (linear and angular) from State_Vector, state_vector / delta_t
+
+        // TODO : FInd velocities in Vehicle Frame
+        
         // Equation (10)
         const auto &[src, tgt] = voxel_map.GetCorrespondences(source, max_correspondence_distance);
         // Equation (11)

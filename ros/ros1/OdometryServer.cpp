@@ -71,6 +71,18 @@ OdometryServer::OdometryServer(const ros::NodeHandle &nh, const ros::NodeHandle 
     // Construct the main KISS-ICP odometry node
     odometry_ = kiss_icp::pipeline::KissICP(config_);
 
+    // TODO: The pointcloud_topic now has the following fields - 
+    // - x
+    // - y
+    // - z
+    // - doppler
+    // - intensity
+    // - range_std
+    // - doppler_std
+    // - elevation_std
+    // - azimuth_std
+    // - timestamp
+
     // Initialize subscribers
     pointcloud_sub_ = nh_.subscribe<sensor_msgs::PointCloud2>("pointcloud_topic", queue_size_,
                                                               &OdometryServer::RegisterFrame, this);
@@ -112,7 +124,12 @@ Sophus::SE3d OdometryServer::LookupTransform(const std::string &target_frame,
 
 void OdometryServer::RegisterFrame(const sensor_msgs::PointCloud2::ConstPtr &msg) {
     const auto cloud_frame_id = msg->header.frame_id;
+    
     const auto points = PointCloud2ToEigen(msg);
+    
+    // TODO: Create a function to extract doppler velocities from msg
+    // const auto doppler_velocities = ExtractDopplerVelocitiesFromMsg(msg);
+
     const auto timestamps = [&]() -> std::vector<double> {
         if (!config_.deskew) return {};
         return GetTimestamps(msg);
@@ -120,6 +137,7 @@ void OdometryServer::RegisterFrame(const sensor_msgs::PointCloud2::ConstPtr &msg
     const auto egocentric_estimation = (base_frame_.empty() || base_frame_ == cloud_frame_id);
 
     // Register frame, main entry point to KISS-ICP pipeline
+    // TODO: Pass doppler velocities to the RegisterFrame function
     const auto &[frame, keypoints] = odometry_.RegisterFrame(points, timestamps);
 
     // Compute the pose using KISS, ego-centric to the LiDAR
