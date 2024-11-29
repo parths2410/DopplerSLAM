@@ -60,18 +60,11 @@ std::vector<Eigen::Vector3d> VoxelDownsample(const std::vector<Eigen::Vector3d> 
     return frame_dowsampled;
 }
 
-std::tuple<std::vector<Eigen::Vector3d>, std::vector<Eigen::Vector3d>, std::vector<double>> Preprocess(const std::vector<Eigen::Vector3d> &frame,
-                                                                                                      const std::vector<Eigen::Vector3d> &directions,
-                                                                                                      const std::vector<double> &dopplers,
-                                                                                                      double max_range,
-                                                                                                      double min_range) {
+std::tuple<std::vector<Eigen::Vector3d>, std::vector<size_t>> Preprocess(const std::vector<Eigen::Vector3d> &frame,
+                                        double max_range,
+                                        double min_range) {
     std::vector<Eigen::Vector3d> inliers_pts;
-    std::vector<Eigen::Vector3d> inliers_dirs;
-    std::vector<double> inliers_dopplers;
-    // std::copy_if(frame.cbegin(), frame.cend(), std::back_inserter(inliers_pts), [&](const auto &pt) {
-    //     const double norm = pt.norm();
-    //     return norm < max_range && norm > min_range;
-    // });
+    std::vector<size_t> indexes;
 
     // TODO : New code -> maintains correspondence between points, directions and dopplers
     for (size_t i = 0; i < frame.size(); ++i) {
@@ -80,12 +73,11 @@ std::tuple<std::vector<Eigen::Vector3d>, std::vector<Eigen::Vector3d>, std::vect
 
         if (norm < max_range && norm > min_range) {
             inliers_pts.emplace_back(pt);
-            inliers_dirs.emplace_back(directions[i]);
-            inliers_dopplers.emplace_back(dopplers[i]);
+            indexes.emplace_back(i);
         }
     }
 
-    return {inliers_pts, inliers_dirs, inliers_dopplers};
+    return {inliers_pts, indexes};
 }
 
 std::vector<Eigen::Vector3d> CorrectKITTIScan(const std::vector<Eigen::Vector3d> &frame) {
