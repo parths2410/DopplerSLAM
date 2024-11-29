@@ -50,6 +50,15 @@ using utils::EigenToPointCloud2;
 using utils::GetTimestamps;
 using utils::PointCloud2ToEigen;
 
+// TODO: new functions
+using utils::GetVehicleToLidarTransform;
+using utils::GetDopplersFromPointCloud2;
+using utils::TransformPoints;
+using utils::NormalizeVectors;
+
+const Eigen::IOFormat CleanFmt(4, 0, ", ", "\n", "[", "]");
+
+
 OdometryServer::OdometryServer(const ros::NodeHandle &nh, const ros::NodeHandle &pnh)
     : nh_(nh), pnh_(pnh), tf2_listener_(tf2_ros::TransformListener(tf2_buffer_)) {
     pnh_.param("base_frame", base_frame_, base_frame_);
@@ -125,10 +134,19 @@ Sophus::SE3d OdometryServer::LookupTransform(const std::string &target_frame,
 void OdometryServer::RegisterFrame(const sensor_msgs::PointCloud2::ConstPtr &msg) {
     const auto cloud_frame_id = msg->header.frame_id;
     
-    const auto points = PointCloud2ToEigen(msg);
-    
+    // TODO : Currently assuming T_V_L = I. 
+    //        ideally, the run-id should be passed to fetch the transform from https://snail-radar.github.io/docs/calibration.html#sensor-calibration
+    const auto T_V_S = GetVehicleToLidarTransform("", cloud_frame_id);
+
+    const auto points_in_S = PointCloud2ToEigen(msg);
+    auto points_in_V = points_in_S;
+    TransformPoints(T_V_S, points_in_V);
+
     // TODO: Create a function to extract doppler velocities from msg
-    // const auto doppler_velocities = ExtractDopplerVelocitiesFromMsg(msg);
+    const auto dopplers = GetDopplersFromPointCloud2(msg);
+
+    auto directions_in_S = points_in_S;
+    NormalizeVectors(directions_in_S);
 
     const auto timestamps = [&]() -> std::vector<double> {
         if (!config_.deskew) return {};
@@ -136,6 +154,30 @@ void OdometryServer::RegisterFrame(const sensor_msgs::PointCloud2::ConstPtr &msg
     }();
     const auto egocentric_estimation = (base_frame_.empty() || base_frame_ == cloud_frame_id);
 
+    // TODO: Assertions to check if the changes didn't fuck anything
+    assert(points_in_S.size() == directions_in_S.size());
+    assert(points_in_S.size() == points_in_V.size());
+    assert(points_in_S.size() == dopplers.size());
+    assert(T_V_S.matrix().isIdentity());
+
+    // TODO: Adding a few logs for sanity checks
+    // ROS_INFO("points_in_S.size() = %zu", points_in_S.size());
+    // ROS_INFO("points_in_V.size() = %zu", points_in_V.size());
+    // ROS_INFO("directions_in_S.size() = %zu", directions_in_S.size());
+    // ROS_INFO("dopplers.size() = %zu", dopplers.size());
+    // ROS_INFO("timestamps.size() = %zu", timestamps.size());
+    // std::size_t idx = std::rand() % points_in_S.size();
+    // std::ostringstream oss;
+    // oss << points_in_S[idx].transpose().format(CleanFmt);
+    // ROS_INFO("points_in_S[%zu] = %s", idx, oss.str().c_str());
+    // oss.str("");
+    // oss << points_in_V[idx].transpose().format(CleanFmt);
+    // ROS_INFO("points_in_V[%zu] = %s", idx, oss.str().c_str());
+    // oss.str("");
+    // oss << directions_in_S[idx].transpose().format(CleanFmt);
+    // ROS_INFO("directions_in_S[%zu] = %s", idx, oss.str().c_str());
+    // ROS_INFO("dopplers[%zu] = %f", idx, dopplers[idx]);
+    
     // Register frame, main entry point to KISS-ICP pipeline
     // TODO: Pass doppler velocities to the RegisterFrame function
     const auto &[frame, keypoints] = odometry_.RegisterFrame(points, timestamps);

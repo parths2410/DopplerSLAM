@@ -233,4 +233,31 @@ inline std::unique_ptr<PointCloud2> EigenToPointCloud2(const std::vector<Eigen::
     FillPointCloud2Timestamp(timestamps, *msg);
     return msg;
 }
+
+inline std::vector<double> GetDopplersFromPointCloud2(const PointCloud2::ConstPtr msg) {
+    std::vector<double> dopplers;
+    dopplers.reserve(msg->height * msg->width);
+    sensor_msgs::PointCloud2ConstIterator<float> msg_doppler(*msg, "doppler");
+    for (size_t i = 0; i < msg->height * msg->width; ++i, ++msg_doppler) {
+        dopplers.emplace_back(*msg_doppler);
+    }
+    return dopplers;
+}
+
+inline Sophus::SE3d GetVehicleToLidarTransform(const std::string &run_id, const std::string &cloud_frame_id) {
+    const auto T_V_S = Sophus::SE3d();  // TODO : Currently assuming T_V_L = I.
+    return T_V_S;
+}
+
+inline void TransformPoints(const Sophus::SE3d &T, std::vector<Eigen::Vector3d> &points) {
+    std::transform(points.cbegin(), points.cend(), points.begin(),
+                   [&](const auto &point) { return T * point; });
+}
+
+inline void NormalizeVectors(std::vector<Eigen::Vector3d> &vectors) {
+    for (auto &vector : vectors) {
+        vector.normalize();
+    }
+}
+
 }  // namespace kiss_icp_ros::utils
