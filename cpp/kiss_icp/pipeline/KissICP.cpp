@@ -62,7 +62,16 @@ KissICP::Vector3dVectorTuple KissICP::RegisterFrame(const std::vector<Eigen::Vec
     // Preprocess the input cloud
     // TODO: Add doppler velocities to the Preprocess function
     const auto &[cropped_frame, indexes] = Preprocess(frame, config_.max_range, config_.min_range);
-    
+
+    std::vector<double> cropped_dopplers;
+    std::vector<Eigen::Vector3d> cropped_directions;
+    cropped_dopplers.reserve(dopplers.size());
+    cropped_directions.reserve(directions.size());
+    for (const auto &idx : indexes) {
+        cropped_dopplers.emplace_back(dopplers[idx]);
+        cropped_directions.emplace_back(directions[idx]);
+    }
+
 
     // Voxelize
     const auto &[source, frame_downsample] = Voxelize(cropped_frame);

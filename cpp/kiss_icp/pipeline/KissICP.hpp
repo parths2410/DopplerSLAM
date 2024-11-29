@@ -60,8 +60,12 @@ public:
     KissICP() : KissICP(KISSConfig{}) {}
 
 public:
-    Vector3dVectorTuple RegisterFrame(const std::vector<Eigen::Vector3d> &frame);
     Vector3dVectorTuple RegisterFrame(const std::vector<Eigen::Vector3d> &frame,
+                                      const std::vector<Eigen::Vector3d> &directions,
+                                      const std::vector<double> &dopplers);
+    Vector3dVectorTuple RegisterFrame(const std::vector<Eigen::Vector3d> &frame,
+                                      const std::vector<Eigen::Vector3d> &directions,
+                                      const std::vector<double> &dopplers,
                                       const std::vector<double> &timestamps);
     Vector3dVectorTuple Voxelize(const std::vector<Eigen::Vector3d> &frame) const;
     double GetAdaptiveThreshold();
