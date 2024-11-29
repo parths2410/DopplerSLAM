@@ -35,6 +35,8 @@
 namespace kiss_icp::pipeline {
 
 KissICP::Vector3dVectorTuple KissICP::RegisterFrame(const std::vector<Eigen::Vector3d> &frame,
+                                                    const std::vector<Eigen::Vector3d> &directions,
+                                                    const std::vector<double> &dopplers,
                                                     const std::vector<double> &timestamps) {
     const auto &deskew_frame = [&]() -> std::vector<Eigen::Vector3d> {
         if (!config_.deskew) return frame;
@@ -49,15 +51,17 @@ KissICP::Vector3dVectorTuple KissICP::RegisterFrame(const std::vector<Eigen::Vec
         const auto &finish_pose = poses_[N - 1];
         return DeSkewScan(frame, timestamps, start_pose, finish_pose);
     }();
-    return RegisterFrame(deskew_frame);
+    return RegisterFrame(deskew_frame, directions, dopplers);
 }
 
 
 // TODO: Add doppler velocities to the function signature
-KissICP::Vector3dVectorTuple KissICP::RegisterFrame(const std::vector<Eigen::Vector3d> &frame) {
+KissICP::Vector3dVectorTuple KissICP::RegisterFrame(const std::vector<Eigen::Vector3d> &frame,
+                                                    const std::vector<Eigen::Vector3d> &directions,
+                                                    const std::vector<double> &dopplers) {
     // Preprocess the input cloud
     // TODO: Add doppler velocities to the Preprocess function
-    const auto &cropped_frame = Preprocess(frame, config_.max_range, config_.min_range);
+    const auto &[cropped_frame, cropped_directions, cropped_dopplers] = Preprocess(frame, directions, dopplers, config_.max_range, config_.min_range);
 
     // Voxelize
     const auto &[source, frame_downsample] = Voxelize(cropped_frame);

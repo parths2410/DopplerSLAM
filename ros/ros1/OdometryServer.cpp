@@ -180,7 +180,7 @@ void OdometryServer::RegisterFrame(const sensor_msgs::PointCloud2::ConstPtr &msg
     
     // Register frame, main entry point to KISS-ICP pipeline
     // TODO: Pass doppler velocities to the RegisterFrame function
-    const auto &[frame, keypoints] = odometry_.RegisterFrame(points, timestamps);
+    const auto &[frame, keypoints] = odometry_.RegisterFrame(points_in_V, directions_in_S, dopplers, T_V_S, timestamps);
 
     // Compute the pose using KISS, ego-centric to the LiDAR
     const Sophus::SE3d kiss_pose = odometry_.poses().back();
