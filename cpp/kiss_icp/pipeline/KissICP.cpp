@@ -32,11 +32,14 @@
 #include "kiss_icp/core/Registration.hpp"
 #include "kiss_icp/core/VoxelHashMap.hpp"
 
+#include <iostream>
+
 namespace kiss_icp::pipeline {
 
 KissICP::Vector3dVectorTuple KissICP::RegisterFrame(const std::vector<Eigen::Vector3d> &frame,
                                                     const std::vector<Eigen::Vector3d> &directions,
                                                     const std::vector<double> &dopplers,
+                                                    const Sophus::SE3d &T_V_S,
                                                     const std::vector<double> &timestamps) {
     const auto &deskew_frame = [&]() -> std::vector<Eigen::Vector3d> {
         if (!config_.deskew) return frame;
@@ -51,16 +54,23 @@ KissICP::Vector3dVectorTuple KissICP::RegisterFrame(const std::vector<Eigen::Vec
         const auto &finish_pose = poses_[N - 1];
         return DeSkewScan(frame, timestamps, start_pose, finish_pose);
     }();
-    return RegisterFrame(deskew_frame, directions, dopplers);
+    return RegisterFrame(deskew_frame, directions, dopplers, T_V_S);
 }
 
 
 // TODO: Add doppler velocities to the function signature
 KissICP::Vector3dVectorTuple KissICP::RegisterFrame(const std::vector<Eigen::Vector3d> &frame,
                                                     const std::vector<Eigen::Vector3d> &directions,
-                                                    const std::vector<double> &dopplers) {
+                                                    const std::vector<double> &dopplers,
+                                                    const Sophus::SE3d &T_V_S) {
+    // Only added to supress Unused Error
+    (void)T_V_S;
+
+    // Sanity Logs
+    // std::cout << "[KissICP::RegisterFrame] Before Preprocess - frame.size() = " << frame.size()
+    //           << "; directions.size() = " << directions.size()
+    //           << "; dopplers.size() = " << dopplers.size() << std::endl;
     // Preprocess the input cloud
-    // TODO: Add doppler velocities to the Preprocess function
     const auto &[cropped_frame, indexes] = Preprocess(frame, config_.max_range, config_.min_range);
 
     std::vector<double> cropped_dopplers;
@@ -72,6 +82,15 @@ KissICP::Vector3dVectorTuple KissICP::RegisterFrame(const std::vector<Eigen::Vec
         cropped_directions.emplace_back(directions[idx]);
     }
 
+    // Sanity Logs
+    // std::cout << "[KissICP::RegisterFrame] After Preprocess - cropped_frame.size() = " << cropped_frame.size()
+    //           << "; cropped_dopplers.size() = " << cropped_dopplers.size()
+    //           << "; cropped_directions.size() = " << cropped_directions.size() << std::endl;
+
+    // Sanity checks
+    assert(cropped_frame.size() == indexes.size());
+    assert(cropped_frame.size() == cropped_dopplers.size());
+    assert(cropped_dopplers.size() == cropped_directions.size());
 
     // Voxelize
     const auto &[source, frame_downsample] = Voxelize(cropped_frame);

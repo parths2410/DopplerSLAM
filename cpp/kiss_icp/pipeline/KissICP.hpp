@@ -62,10 +62,12 @@ public:
 public:
     Vector3dVectorTuple RegisterFrame(const std::vector<Eigen::Vector3d> &frame,
                                       const std::vector<Eigen::Vector3d> &directions,
-                                      const std::vector<double> &dopplers);
+                                      const std::vector<double> &dopplers,
+                                      const Sophus::SE3d &T_V_S);
     Vector3dVectorTuple RegisterFrame(const std::vector<Eigen::Vector3d> &frame,
                                       const std::vector<Eigen::Vector3d> &directions,
                                       const std::vector<double> &dopplers,
+                                      const Sophus::SE3d &T_V_S,
                                       const std::vector<double> &timestamps);
     Vector3dVectorTuple Voxelize(const std::vector<Eigen::Vector3d> &frame) const;
     double GetAdaptiveThreshold();
