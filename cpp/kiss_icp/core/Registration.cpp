@@ -109,9 +109,10 @@ Sophus::SE3d RegisterFrame(const std::vector<Eigen::Vector3d> &frame,
                            const VoxelHashMap &voxel_map,
                            const Sophus::SE3d &initial_guess,
                            double max_correspondence_distance,
-                           double kernel) {
+                           double kernel, double gamma=0.5, std:vector<Eigen::Vector3d>& source_direction, double& doppler_in_S) {
     if (voxel_map.Empty()) return initial_guess;
 
+    double period = 0.05;
     // Equation (9)
     std::vector<Eigen::Vector3d> source = frame;
     TransformPoints(initial_guess, source);
@@ -120,12 +121,20 @@ Sophus::SE3d RegisterFrame(const std::vector<Eigen::Vector3d> &frame,
     Sophus::SE3d T_icp = Sophus::SE3d(); // TODO: Why is T_ICP initialized to the identity?
     // TODO: Add doppler velocities to the ICP loop
     for (int j = 0; j < MAX_NUM_ITERATIONS_; ++j) {
-        // TODO : State_Vector from T_icp
+        Eigen::Vector6d se3_vector = T_icp.log(); 
 
-        // TODO : Find Velcoity (linear and angular) from State_Vector, state_vector / delta_t
+        // Access translation and rotation components
+        Eigen::Vector3d translation = se3_vector.head<3>(); 
+        Eigen::Vector3d rotation = se3_vector.tail<3>();
 
         // TODO : FInd velocities in Vehicle Frame
-        
+        Eigen::Vector3d linear_velocity_car = -translation / period ; // linear velocity
+        Eigen::Vector3d angular_velocity_car = -rotation / period ; // angular  
+
+        Eigen::Vector3d &ds_in_V = source_directions;  // source directions
+        const double doppler_pred_in_S = -ds_in_S.dot(v_s_in_S);
+        const double doppler_error = doppler_in_S - doppler_pred_in_S;
+
         // Equation (10)
         const auto &[src, tgt] = voxel_map.GetCorrespondences(source, max_correspondence_distance);
         // Equation (11)
@@ -137,7 +146,10 @@ Sophus::SE3d RegisterFrame(const std::vector<Eigen::Vector3d> &frame,
         // Update iterations
         T_icp = estimation * T_icp;
         // Termination criteria
-        if (dx.norm() < ESTIMATION_THRESHOLD_) break;
+
+        double total_error = (dx.norm()*(1-gamma)) + gamma*(dv.norm()); 
+
+        if (total_error < ESTIMATION_THRESHOLD_) break;
     }
     // Spit the final transformation
     return T_icp * initial_guess;
