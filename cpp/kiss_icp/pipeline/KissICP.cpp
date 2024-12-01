@@ -63,13 +63,11 @@ KissICP::Vector3dVectorTuple KissICP::RegisterFrame(const std::vector<Eigen::Vec
                                                     const std::vector<Eigen::Vector3d> &directions,
                                                     const std::vector<double> &dopplers,
                                                     const Sophus::SE3d &T_V_S) {
-    // Only added to supress Unused Error
-    (void)T_V_S;
-
+    
     // Sanity Logs
-    // std::cout << "[KissICP::RegisterFrame] Before Preprocess - frame.size() = " << frame.size()
-    //           << "; directions.size() = " << directions.size()
-    //           << "; dopplers.size() = " << dopplers.size() << std::endl;
+    // std::cout << "[KissICP::RegisterFrame] Before Preprocess - frame.size() = " << frame.size() << "\n"
+    //           << "[KissICP::RegisterFrame] Before Preprocess - directions.size() = " << directions.size() << "\n"
+    //           << "[KissICP::RegisterFrame] Before Preprocess - dopplers.size() = " << dopplers.size() << std::endl;
     // Preprocess the input cloud
     const auto &[cropped_frame, indexes] = Preprocess(frame, config_.max_range, config_.min_range);
 
@@ -83,47 +81,75 @@ KissICP::Vector3dVectorTuple KissICP::RegisterFrame(const std::vector<Eigen::Vec
     }
 
     // Sanity Logs
-    // std::cout << "[KissICP::RegisterFrame] After Preprocess - cropped_frame.size() = " << cropped_frame.size()
-    //           << "; cropped_dopplers.size() = " << cropped_dopplers.size()
-    //           << "; cropped_directions.size() = " << cropped_directions.size() << std::endl;
+    // std::cout << "[KissICP::RegisterFrame] After Preprocess - cropped_frame.size() = " << cropped_frame.size() << "\n"
+    //           << "[KissICP::RegisterFrame] After Preprocess - cropped_dopplers.size() = " << cropped_dopplers.size() << "\n"
+    //           << "[KissICP::RegisterFrame] After Preprocess - cropped_directions.size() = " << cropped_directions.size() << std::endl;
 
     // Sanity checks
-    assert(cropped_frame.size() == indexes.size());
-    assert(cropped_frame.size() == cropped_dopplers.size());
-    assert(cropped_dopplers.size() == cropped_directions.size());
+    // assert(cropped_frame.size() == indexes.size());
+    // assert(cropped_frame.size() == cropped_dopplers.size());
+    // assert(cropped_dopplers.size() == cropped_directions.size());
 
     // Voxelize
-    const auto &[source, frame_downsample] = Voxelize(cropped_frame);
+    const auto &[source_pair, frame_downsample_pair] = Voxelize(cropped_frame);
+
+    const auto &[source, indices_source] = source_pair;
+    const auto &[frame_downsample, indices_frame_downsample] = frame_downsample_pair;
+
+    std::vector<double> dopplers_ds_1;
+    std::vector<Eigen::Vector3d> directions_ds_1;
+    dopplers_ds_1.reserve(indices_source.size());
+    directions_ds_1.reserve(indices_source.size());
+    for (const auto &idx : indices_source) {
+        dopplers_ds_1.emplace_back(cropped_dopplers[idx]);
+        directions_ds_1.emplace_back(cropped_directions[idx]);
+    }
+
+    assert(source.size() == dopplers_ds_1.size());
+    assert(source.size() == directions_ds_1.size());
+
+    // Sanity Logs
+    // std::cout << "[KissICP::RegisterFrame] After Downsamppling - source.size() = " << source.size() << "\n"
+    //           << "[KissICP::RegisterFrame] After Downsamppling - dopplers_ds_1.size() = " << dopplers_ds_1.size() << "\n"
+    //           << "[KissICP::RegisterFrame] After Downsamppling - directions_ds_1.size() = " << directions_ds_1.size() << std::endl;
+    // std::cout << std::endl;
 
     // Get motion prediction and adaptive_threshold
     const double sigma = GetAdaptiveThreshold();
 
     // Compute initial_guess for ICP
-    const auto prediction = GetPredictionModel();
+    auto T_pred = GetPredictionModel();
     const auto last_pose = !poses_.empty() ? poses_.back() : Sophus::SE3d();
-    const auto initial_guess = last_pose * prediction;
+    const auto pose_pred = last_pose * T_pred;
 
     // Maintain delta_ts
 
+    double period = 0.05; // TODO: Make this a parameter
     // Run icp
     // TODO: Add doppler velocities to the RegisterFrame function
     const Sophus::SE3d new_pose = kiss_icp::RegisterFrame(source,         //
                                                           local_map_,     //
-                                                          initial_guess,  //
+                                                          dopplers_ds_1,  //
+                                                          directions_ds_1, //
+                                                          T_pred,         //
+                                                          pose_pred,      //
+                                                          T_V_S,
+                                                          period,          //
                                                           3.0 * sigma,    //
                                                           sigma / 3.0);
-    const auto model_deviation = initial_guess.inverse() * new_pose;
+    const auto model_deviation = pose_pred.inverse() * new_pose;
     adaptive_threshold_.UpdateModelDeviation(model_deviation);
     local_map_.Update(frame_downsample, new_pose);
     poses_.push_back(new_pose);
     return {frame, source};
 }
 
-KissICP::Vector3dVectorTuple KissICP::Voxelize(const std::vector<Eigen::Vector3d> &frame) const {
+KissICP::Vector3dVectorTupleWithIndices KissICP::Voxelize(const std::vector<Eigen::Vector3d> &frame) const {
     const auto voxel_size = config_.voxel_size;
-    const auto frame_downsample = kiss_icp::VoxelDownsample(frame, voxel_size * 0.5);
-    const auto source = kiss_icp::VoxelDownsample(frame_downsample, voxel_size * 1.5);
-    return {source, frame_downsample};
+    const auto [frame_downsample, indices_frame_downsample] = kiss_icp::VoxelDownsample(frame, voxel_size * 0.5);
+    const auto [source, indices_source] = kiss_icp::VoxelDownsample(frame_downsample, voxel_size * 1.5);
+    
+    return {{source, indices_source}, {frame_downsample, indices_frame_downsample}};
 }
 
 double KissICP::GetAdaptiveThreshold() {

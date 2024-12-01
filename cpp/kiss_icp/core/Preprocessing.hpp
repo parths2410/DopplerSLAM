@@ -40,6 +40,6 @@ std::tuple<std::vector<Eigen::Vector3d>, std::vector<size_t>> Preprocess(const s
 std::vector<Eigen::Vector3d> CorrectKITTIScan(const std::vector<Eigen::Vector3d> &frame);
 
 /// Voxelize point cloud keeping the original coordinates
-std::vector<Eigen::Vector3d> VoxelDownsample(const std::vector<Eigen::Vector3d> &frame,
+std::tuple<std::vector<Eigen::Vector3d>, std::vector<size_t>> VoxelDownsample(const std::vector<Eigen::Vector3d> &frame,
                                              double voxel_size);
 }  // namespace kiss_icp

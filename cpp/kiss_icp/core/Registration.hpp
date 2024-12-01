@@ -32,7 +32,12 @@ namespace kiss_icp {
 
 Sophus::SE3d RegisterFrame(const std::vector<Eigen::Vector3d> &frame,
                            const VoxelHashMap &voxel_map,
-                           const Sophus::SE3d &initial_guess,
+                           const std::vector<double> &dopplers,
+                           const std::vector<Eigen::Vector3d> &directions,
+                           Sophus::SE3d &T_pred,
+                           const Sophus::SE3d &pose_pred,
+                           const Sophus::SE3d &T_V_S,
+                           double period,
                            double max_correspondence_distance,
                            double kernel);
 }  // namespace kiss_icp

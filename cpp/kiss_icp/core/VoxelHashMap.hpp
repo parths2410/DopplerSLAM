@@ -57,7 +57,9 @@ struct VoxelHashMap {
           max_distance_(max_distance),
           max_points_per_voxel_(max_points_per_voxel) {}
 
-    Vector3dVectorTuple GetCorrespondences(const Vector3dVector &points,
+    using Vector3dIndexTuple = std::tuple<Vector3dVector, std::vector<std::size_t>>;
+    using VecIdxPairVectorTuple = std::tuple<Vector3dIndexTuple, Vector3dVector>;
+    VecIdxPairVectorTuple GetCorrespondences(const Vector3dVector &points,
                                            double max_correspondance_distance) const;
     inline void Clear() { map_.clear(); }
     inline bool Empty() const { return map_.empty(); }

@@ -42,22 +42,27 @@ struct VoxelHash {
 }  // namespace
 
 namespace kiss_icp {
-std::vector<Eigen::Vector3d> VoxelDownsample(const std::vector<Eigen::Vector3d> &frame,
+std::tuple<std::vector<Eigen::Vector3d>, std::vector<size_t>> VoxelDownsample(const std::vector<Eigen::Vector3d> &frame,
                                              double voxel_size) {
-    tsl::robin_map<Voxel, Eigen::Vector3d, VoxelHash> grid;
+    tsl::robin_map<Voxel, std::pair<Eigen::Vector3d, size_t>, VoxelHash> grid;
     grid.reserve(frame.size());
-    for (const auto &point : frame) {
+    for (size_t i = 0; i < frame.size(); ++i) {
+        const auto &point = frame[i];
         const auto voxel = Voxel((point / voxel_size).cast<int>());
         if (grid.contains(voxel)) continue;
-        grid.insert({voxel, point});
+        grid.insert({voxel, {point, i}});
     }
     std::vector<Eigen::Vector3d> frame_dowsampled;
+    std::vector<size_t> indices;
     frame_dowsampled.reserve(grid.size());
-    for (const auto &[voxel, point] : grid) {
+    indices.reserve(grid.size());
+    for (const auto &[voxel, point_idx_pair] : grid) {
         (void)voxel;
+        const auto &[point, idx] = point_idx_pair;
         frame_dowsampled.emplace_back(point);
+        indices.emplace_back(idx);
     }
-    return frame_dowsampled;
+    return {frame_dowsampled, indices};
 }
 
 std::tuple<std::vector<Eigen::Vector3d>, std::vector<size_t>> Preprocess(const std::vector<Eigen::Vector3d> &frame,

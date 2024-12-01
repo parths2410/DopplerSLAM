@@ -31,6 +31,8 @@
 #include <sophus/so3.hpp>
 #include <tuple>
 
+#include <iostream>
+
 namespace Eigen {
 using Matrix6d = Eigen::Matrix<double, 6, 6>;
 using Matrix3_6d = Eigen::Matrix<double, 3, 6>;
@@ -107,27 +109,65 @@ namespace kiss_icp {
 
 Sophus::SE3d RegisterFrame(const std::vector<Eigen::Vector3d> &frame,
                            const VoxelHashMap &voxel_map,
-                           const Sophus::SE3d &initial_guess,
+                           const std::vector<double> &dopplers,
+                           const std::vector<Eigen::Vector3d> &directions,
+                           Sophus::SE3d &T_pred,
+                           const Sophus::SE3d &pose_pred,
+                           const Sophus::SE3d &T_V_S,
+                           double period,
                            double max_correspondence_distance,
                            double kernel) {
-    if (voxel_map.Empty()) return initial_guess;
+    (void)T_V_S;
+    Eigen::Matrix3d R_V_S = T_V_S.rotationMatrix();
+    Eigen::Vector3d r_v_to_s_in_V = T_V_S.translation();
+    Eigen::Matrix3d R_S_V = R_V_S.transpose();
+
+    if (voxel_map.Empty()) return pose_pred;
+
+    // std::cout << "[kiss_icp::RegisterFrame] pose_pred = \n" << pose_pred.matrix() << std::endl;
+    // std::cout << " ------------ " << std::endl;
+    // std::cout << "[kiss_icp::RegisterFrame] T_pred = \n" << T_pred.matrix() << std::endl;
+    // std::cout << std::endl;
 
     // Equation (9)
     std::vector<Eigen::Vector3d> source = frame;
-    TransformPoints(initial_guess, source);
+    TransformPoints(pose_pred, source);
 
     // ICP-loop
     Sophus::SE3d T_icp = Sophus::SE3d(); // TODO: Why is T_ICP initialized to the identity?
     // TODO: Add doppler velocities to the ICP loop
     for (int j = 0; j < MAX_NUM_ITERATIONS_; ++j) {
-        // TODO : State_Vector from T_icp
+        // TODO : State_Vector from T_pred
+        Eigen::Vector6d state_vector = T_pred.log();
 
         // TODO : Find Velcoity (linear and angular) from State_Vector, state_vector / delta_t
+        Eigen::Vector3d v_v_in_V = -state_vector.block<3, 1>(0, 0) / period;
+        Eigen::Vector3d w_v_in_V = -state_vector.block<3, 1>(3, 0) / period;
 
-        // TODO : FInd velocities in Vehicle Frame
-        
+        Eigen::Vector3d v_s_in_V = v_v_in_V + w_v_in_V.cross(r_v_to_s_in_V);
+        Eigen::Vector3d v_s_in_S = R_S_V * v_s_in_V;
+        (void)v_s_in_S;
+
         // Equation (10)
-        const auto &[src, tgt] = voxel_map.GetCorrespondences(source, max_correspondence_distance);
+        const auto &[src_pair, tgt] = voxel_map.GetCorrespondences(source, max_correspondence_distance);
+        const auto &[src, src_indices] = src_pair;
+
+        auto dplrs_in_S = std::vector<double>(src_indices.size());
+        for (std::size_t i = 0; i < src_indices.size(); ++i) {
+            dplrs_in_S[i] = dopplers[src_indices[i]];
+        }
+        auto src_dirs_in_V = std::vector<Eigen::Vector3d>(src_indices.size());
+        for (std::size_t i = 0; i < src_indices.size(); ++i) {
+            src_dirs_in_V[i] = directions[src_indices[i]];
+        }
+
+        // std::cout << "[kiss_icp::RegisterFrame] src_indices.size() = " << src_indices.size() << std::endl;
+        // std::cout << "[kiss_icp::RegisterFrame] src.size() = " << src.size() << std::endl;
+        // std::cout << "[kiss_icp::RegisterFrame] tgt.size() = " << tgt.size() << std::endl;
+        // std::cout << "[kiss_icp::RegisterFrame] dplrs.size() = " << dplrs.size() << std::endl;
+        // std::cout << "[kiss_icp::RegisterFrame] src_dirs.size() = " << src_dirs.size() << std::endl;
+        // std::cout << std::endl;
+
         // Equation (11)
         const auto &[JTJ, JTr] = BuildLinearSystem(src, tgt, kernel);
         const Eigen::Vector6d dx = JTJ.ldlt().solve(-JTr);
@@ -136,11 +176,12 @@ Sophus::SE3d RegisterFrame(const std::vector<Eigen::Vector3d> &frame,
         TransformPoints(estimation, source);
         // Update iterations
         T_icp = estimation * T_icp;
+        T_pred = estimation * T_pred;
         // Termination criteria
         if (dx.norm() < ESTIMATION_THRESHOLD_) break;
     }
     // Spit the final transformation
-    return T_icp * initial_guess;
+    return T_icp * pose_pred;
 }
 
 }  // namespace kiss_icp

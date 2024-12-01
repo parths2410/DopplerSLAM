@@ -38,16 +38,18 @@ struct ResultTuple {
     ResultTuple(std::size_t n) {
         source.reserve(n);
         target.reserve(n);
+        source_indices.reserve(n);
     }
     std::vector<Eigen::Vector3d> source;
     std::vector<Eigen::Vector3d> target;
+    std::vector<std::size_t> source_indices;
 };
 }  // namespace
 
 namespace kiss_icp {
 
 // TODO: Add doppler velocities to the GetCorrespondences function
-VoxelHashMap::Vector3dVectorTuple VoxelHashMap::GetCorrespondences(
+VoxelHashMap::VecIdxPairVectorTuple VoxelHashMap::GetCorrespondences(
     const Vector3dVector &points, double max_correspondance_distance) const {
     // Lambda Function to obtain the KNN of one point, maybe refactor
     auto GetClosestNeighboor = [&](const Eigen::Vector3d &point) {
@@ -92,38 +94,43 @@ VoxelHashMap::Vector3dVectorTuple VoxelHashMap::GetCorrespondences(
         return closest_neighbor;
     };
     using points_iterator = std::vector<Eigen::Vector3d>::const_iterator;
-    const auto [source, target] = tbb::parallel_reduce(
+    const auto [source, target, source_indices] = tbb::parallel_reduce(
         // Range
         tbb::blocked_range<points_iterator>{points.cbegin(), points.cend()},
         // Identity
         ResultTuple(points.size()),
         // 1st lambda: Parallel computation
-        [max_correspondance_distance, &GetClosestNeighboor](
+        [max_correspondance_distance, &GetClosestNeighboor, &points](
             const tbb::blocked_range<points_iterator> &r, ResultTuple res) -> ResultTuple {
-            auto &[src, tgt] = res;
+            auto &[src, tgt, src_indices] = res;
             src.reserve(r.size());
             tgt.reserve(r.size());
-            for (const auto &point : r) {
+            src_indices.reserve(r.size());
+            for (auto it = r.begin(); it != r.end(); ++it) {
+                const auto &point = *it;
                 Eigen::Vector3d closest_neighboors = GetClosestNeighboor(point);
                 if ((closest_neighboors - point).norm() < max_correspondance_distance) {
                     src.emplace_back(point);
                     tgt.emplace_back(closest_neighboors);
+                    src_indices.emplace_back(std::distance(points.cbegin(), it));
                 }
             }
             return res;
         },
         // 2nd lambda: Parallel reduction
         [](ResultTuple a, const ResultTuple &b) -> ResultTuple {
-            auto &[src, tgt] = a;
-            const auto &[srcp, tgtp] = b;
+            auto &[src, tgt, src_indices] = a;
+            const auto &[srcp, tgtp, src_indicesp] = b;
             src.insert(src.end(),  //
                        std::make_move_iterator(srcp.begin()), std::make_move_iterator(srcp.end()));
             tgt.insert(tgt.end(),  //
                        std::make_move_iterator(tgtp.begin()), std::make_move_iterator(tgtp.end()));
+            src_indices.insert(src_indices.end(),  //
+                               std::make_move_iterator(src_indicesp.begin()), std::make_move_iterator(src_indicesp.end()));
             return a;
         });
 
-    return std::make_tuple(source, target);
+    return std::make_tuple(std::make_tuple(source, source_indices), target);
 }
 
 std::vector<Eigen::Vector3d> VoxelHashMap::Pointcloud() const {

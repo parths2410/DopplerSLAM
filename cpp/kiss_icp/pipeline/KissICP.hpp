@@ -50,7 +50,7 @@ class KissICP {
 public:
     using Vector3dVector = std::vector<Eigen::Vector3d>;
     using Vector3dVectorTuple = std::tuple<Vector3dVector, Vector3dVector>;
-
+    using Vector3dVectorTupleWithIndices = std::tuple<std::tuple<Vector3dVector, std::vector<size_t>>, std::tuple<Vector3dVector, std::vector<size_t>>>;
 public:
     explicit KissICP(const KISSConfig &config)
         : config_(config),
@@ -69,7 +69,7 @@ public:
                                       const std::vector<double> &dopplers,
                                       const Sophus::SE3d &T_V_S,
                                       const std::vector<double> &timestamps);
-    Vector3dVectorTuple Voxelize(const std::vector<Eigen::Vector3d> &frame) const;
+    Vector3dVectorTupleWithIndices Voxelize(const std::vector<Eigen::Vector3d> &frame) const;
     double GetAdaptiveThreshold();
     Sophus::SE3d GetPredictionModel() const;
     bool HasMoved();
