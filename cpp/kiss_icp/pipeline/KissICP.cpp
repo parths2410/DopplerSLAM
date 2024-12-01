@@ -31,6 +31,7 @@
 #include "kiss_icp/core/Preprocessing.hpp"
 #include "kiss_icp/core/Registration.hpp"
 #include "kiss_icp/core/VoxelHashMap.hpp"
+#include "kiss_icp/core/EgoMotionEstimation.hpp"
 
 #include <iostream>
 
@@ -63,11 +64,6 @@ KissICP::Vector3dVectorTuple KissICP::RegisterFrame(const std::vector<Eigen::Vec
                                                     const std::vector<Eigen::Vector3d> &directions,
                                                     const std::vector<double> &dopplers,
                                                     const Sophus::SE3d &T_V_S) {
-    
-    // Sanity Logs
-    // std::cout << "[KissICP::RegisterFrame] Before Preprocess - frame.size() = " << frame.size() << "\n"
-    //           << "[KissICP::RegisterFrame] Before Preprocess - directions.size() = " << directions.size() << "\n"
-    //           << "[KissICP::RegisterFrame] Before Preprocess - dopplers.size() = " << dopplers.size() << std::endl;
     // Preprocess the input cloud
     const auto &[cropped_frame, indexes] = Preprocess(frame, config_.max_range, config_.min_range);
 
@@ -79,16 +75,6 @@ KissICP::Vector3dVectorTuple KissICP::RegisterFrame(const std::vector<Eigen::Vec
         cropped_dopplers.emplace_back(dopplers[idx]);
         cropped_directions.emplace_back(directions[idx]);
     }
-
-    // Sanity Logs
-    // std::cout << "[KissICP::RegisterFrame] After Preprocess - cropped_frame.size() = " << cropped_frame.size() << "\n"
-    //           << "[KissICP::RegisterFrame] After Preprocess - cropped_dopplers.size() = " << cropped_dopplers.size() << "\n"
-    //           << "[KissICP::RegisterFrame] After Preprocess - cropped_directions.size() = " << cropped_directions.size() << std::endl;
-
-    // Sanity checks
-    // assert(cropped_frame.size() == indexes.size());
-    // assert(cropped_frame.size() == cropped_dopplers.size());
-    // assert(cropped_dopplers.size() == cropped_directions.size());
 
     // Voxelize
     const auto &[source_pair, frame_downsample_pair] = Voxelize(cropped_frame);
@@ -105,14 +91,8 @@ KissICP::Vector3dVectorTuple KissICP::RegisterFrame(const std::vector<Eigen::Vec
         directions_ds_1.emplace_back(cropped_directions[idx]);
     }
 
-    assert(source.size() == dopplers_ds_1.size());
-    assert(source.size() == directions_ds_1.size());
-
-    // Sanity Logs
-    // std::cout << "[KissICP::RegisterFrame] After Downsamppling - source.size() = " << source.size() << "\n"
-    //           << "[KissICP::RegisterFrame] After Downsamppling - dopplers_ds_1.size() = " << dopplers_ds_1.size() << "\n"
-    //           << "[KissICP::RegisterFrame] After Downsamppling - directions_ds_1.size() = " << directions_ds_1.size() << std::endl;
-    // std::cout << std::endl;
+    Eigen::Vector3d v_pred = kiss_icp::core::estimateEgoMotion(directions_ds_1, dopplers_ds_1, 0.1, 100);
+    // std::cout << "[KissICP::RegisterFrame] ego_velocity = " << ego_velocity.transpose() << std::endl;
 
     // Get motion prediction and adaptive_threshold
     const double sigma = GetAdaptiveThreshold();
@@ -130,7 +110,8 @@ KissICP::Vector3dVectorTuple KissICP::RegisterFrame(const std::vector<Eigen::Vec
     const Sophus::SE3d new_pose = kiss_icp::RegisterFrame(source,         //
                                                           local_map_,     //
                                                           dopplers_ds_1,  //
-                                                          directions_ds_1, //
+                                                          directions_ds_1,
+                                                          v_pred,
                                                           T_pred,         //
                                                           pose_pred,      //
                                                           T_V_S,
