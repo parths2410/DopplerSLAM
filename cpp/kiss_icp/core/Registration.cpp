@@ -70,38 +70,76 @@ constexpr double ESTIMATION_THRESHOLD_ = 0.0001;
 std::tuple<Eigen::Matrix6d, Eigen::Vector6d> BuildLinearSystem(
     const std::vector<Eigen::Vector3d> &source,
     const std::vector<Eigen::Vector3d> &target,
-    double kernel) {
+    const std::vector<double> &dopplers_in_S,
+    const std::vector<Eigen::Vector3d> &directions_in_V,
+    const Sophus::SE3d &T_V_S,
+    Eigen::Vector3d v_s_in_S,
+    double kernel, 
+    double lambda_doppler, 
+    double period) {
+    const Eigen::Matrix3d R_V_S = T_V_S.rotationMatrix();
+    const Eigen::Vector3d r_v_to_s_in_V = T_V_S.translation();
+    const Eigen::Matrix3d R_S_V = R_V_S.transpose();
+
+    const double lambda_geometric = 1.0 - lambda_doppler;
+    const double sqrt_lambda_doppler = std::sqrt(lambda_doppler);
+    const double sqrt_lambda_geometric = std::sqrt(lambda_geometric);
+
+    const double sqrt_lambda_doppler_by_dt = sqrt_lambda_doppler / period; 
+
+    double doppler_outlier_threshold = 100.0; // TODO: replace with variable
+
     auto compute_jacobian_and_residual = [&](auto i) {
-        const Eigen::Vector3d residual = source[i] - target[i];
-        Eigen::Matrix3_6d J_r;
-        J_r.block<3, 3>(0, 0) = Eigen::Matrix3d::Identity();
-        J_r.block<3, 3>(0, 3) = -1.0 * Sophus::SO3d::hat(source[i]);
-        return std::make_tuple(J_r, residual);
+        Eigen::Vector3d residual_geometric = source[i] - target[i];
+        residual_geometric = sqrt_lambda_geometric * residual_geometric;
+        Eigen::Matrix3_6d J_r_geometric;
+        J_r_geometric.block<3, 3>(0, 0) = sqrt_lambda_geometric * Eigen::Matrix3d::Identity();
+        J_r_geometric.block<3, 3>(0, 3) = sqrt_lambda_geometric * -1.0 * Sophus::SO3d::hat(source[i]);
+        
+        Eigen::Vector3d ds_in_V = directions_in_V[i];
+        Eigen::Vector3d ds_in_S = R_S_V * ds_in_V;
+        const double doppler_pred_in_S = -ds_in_S.dot(v_s_in_S);
+        double residual_doppler = dopplers_in_S[i] - doppler_pred_in_S;
+        residual_doppler = sqrt_lambda_doppler_by_dt * residual_doppler;
+        Eigen::Matrix<double, 1, 6> J_r_doppler;
+        J_r_doppler.block<1, 3>(0, 0) = sqrt_lambda_doppler_by_dt * ds_in_V.cross(r_v_to_s_in_V); 
+        J_r_doppler.block<1, 3>(0, 3) = sqrt_lambda_doppler_by_dt * -ds_in_V.transpose();
+
+        if (std::abs(residual_doppler) > doppler_outlier_threshold) {
+            residual_geometric = Eigen::Vector3d::Zero();
+            residual_doppler = 0.0;
+            J_r_geometric.setZero();
+            J_r_doppler.setZero();
+        }
+
+        return std::make_tuple(J_r_geometric, residual_geometric, J_r_doppler, residual_doppler);
     };
 
-    const auto &[JTJ, JTr] = tbb::parallel_reduce(
-        // Range
-        tbb::blocked_range<size_t>{0, source.size()},
-        // Identity
-        ResultTuple(),
-        // 1st Lambda: Parallel computation
-        [&](const tbb::blocked_range<size_t> &r, ResultTuple J) -> ResultTuple {
-            auto Weight = [&](double residual2) {
-                return square(kernel) / square(kernel + residual2);
-            };
-            auto &[JTJ_private, JTr_private] = J;
-            for (auto i = r.begin(); i < r.end(); ++i) {
-                const auto &[J_r, residual] = compute_jacobian_and_residual(i);
-                const double w = Weight(residual.squaredNorm());
-                JTJ_private.noalias() += J_r.transpose() * w * J_r;
-                JTr_private.noalias() += J_r.transpose() * w * residual;
-            }
-            return J;
-        },
-        // 2nd Lambda: Parallel reduction of the private Jacboians
-        [&](ResultTuple a, const ResultTuple &b) -> ResultTuple { return a + b; });
+    ResultTuple result;
+    auto Weight = [&](double residual2) {
+        return square(kernel) / square(kernel + residual2);
+    };
 
-    return std::make_tuple(JTJ, JTr);
+    auto TukeyWeight = [&](double residual2) {
+        const double u = square(kernel);
+        if (residual2 > u) return 0.0;
+        const double r2 = residual2 / u;
+        return square(1.0 - r2) * square(1.0 - r2 * r2);
+    };
+    (void)TukeyWeight;
+
+    for (size_t i = 0; i < source.size(); ++i) {
+        const auto &[J_r_geometric, residual_geometric, J_r_doppler, residual_doppler] = compute_jacobian_and_residual(i);
+        (void)J_r_doppler;
+        (void)residual_doppler;
+        const double w = Weight(residual_geometric.squaredNorm());
+        result.JTJ.noalias() += J_r_geometric.transpose() * w * J_r_geometric;
+        result.JTr.noalias() += J_r_geometric.transpose() * w * residual_geometric;
+        result.JTJ.noalias() += J_r_doppler.transpose() * w * J_r_doppler;
+        result.JTr.noalias() += J_r_doppler.transpose() * w * residual_doppler;
+    }
+
+    return std::make_tuple(result.JTJ, result.JTr);
 }
 }  // namespace
 
@@ -124,6 +162,7 @@ Sophus::SE3d RegisterFrame(const std::vector<Eigen::Vector3d> &frame,
 
     if (voxel_map.Empty()) return pose_pred;
 
+    // std::cout << "[kiss_icp::RegisterFrame] kernel = " << kernel << std::endl;
     // std::cout << "[kiss_icp::RegisterFrame] pose_pred = \n" << pose_pred.matrix() << std::endl;
     // std::cout << " ------------ " << std::endl;
     // std::cout << "[kiss_icp::RegisterFrame] T_pred = \n" << T_pred.matrix() << std::endl;
@@ -133,6 +172,8 @@ Sophus::SE3d RegisterFrame(const std::vector<Eigen::Vector3d> &frame,
     std::vector<Eigen::Vector3d> source = frame;
     TransformPoints(pose_pred, source);
 
+    double lambda_doppler = 0.0;
+    // double tukey_kernel = 0.5;
     // ICP-loop
     Sophus::SE3d T_icp = Sophus::SE3d(); // TODO: Why is T_ICP initialized to the identity?
     // TODO: Add doppler velocities to the ICP loop
@@ -146,8 +187,9 @@ Sophus::SE3d RegisterFrame(const std::vector<Eigen::Vector3d> &frame,
 
         Eigen::Vector3d v_s_in_V = v_v_in_V + w_v_in_V.cross(r_v_to_s_in_V);
         Eigen::Vector3d v_s_in_S = R_S_V * v_s_in_V;
-        (void)v_s_in_S;
 
+        std::cout << "[kiss_icp::RegisterFrame] v_s_in_S = " << v_s_in_S.transpose() << std::endl;
+        std::cout << " ------------ " << std::endl;
         // Equation (10)
         const auto &[src_pair, tgt] = voxel_map.GetCorrespondences(source, max_correspondence_distance);
         const auto &[src, src_indices] = src_pair;
@@ -169,7 +211,7 @@ Sophus::SE3d RegisterFrame(const std::vector<Eigen::Vector3d> &frame,
         // std::cout << std::endl;
 
         // Equation (11)
-        const auto &[JTJ, JTr] = BuildLinearSystem(src, tgt, kernel);
+        const auto &[JTJ, JTr] = BuildLinearSystem(src, tgt, dplrs_in_S, src_dirs_in_V, T_V_S, v_s_in_S, kernel, lambda_doppler, period);
         const Eigen::Vector6d dx = JTJ.ldlt().solve(-JTr);
         const Sophus::SE3d estimation = Sophus::SE3d::exp(dx);
         // Equation (12)
