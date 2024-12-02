@@ -77,7 +77,7 @@ std::vector<size_t> detectStationaryTargets(
     return best_inliers; // Indices of stationary targets
 }
 
-Eigen::Vector3d estimateEgoVelocity(
+Eigen::Vector2d estimateSensorVelocity(
     const std::vector<Eigen::Vector3d> &directions,
     const std::vector<double> &dopplers) {
     
@@ -99,13 +99,30 @@ Eigen::Vector3d estimateEgoVelocity(
     // Solve for velocity vector v = [vx, vy] using Least Squares: A * v = b
     Eigen::Vector2d velocity = A.colPivHouseholderQr().solve(b);
 
-    Eigen::Vector3d velocity_3d;
-    velocity_3d.block<2, 1>(0, 0) = velocity;
-    velocity_3d(2) = 0;
-    return velocity_3d; // [vx, vy, 0]
+    return velocity; // [vx, vy]
 }
 
-Eigen::Vector3d estimateEgoMotion(
+std::pair<double, double> calculateEgoMotion(
+    const Eigen::Vector2d &sensor_velocity,
+    double sensor_mount_angle,
+    double sensor_offset_x,
+    double sensor_offset_y) {
+
+    double v_S = sensor_velocity.norm();
+
+    double alpha = std::atan2(sensor_velocity.y(), sensor_velocity.x());
+
+    double v = (std::cos(sensor_mount_angle + alpha) -
+                (sensor_offset_y / sensor_offset_x) * std::sin(sensor_mount_angle + alpha)) * v_S;
+    double omega = std::sin(sensor_mount_angle + alpha) / sensor_offset_x * v_S;
+
+    v = -v;
+    omega = -omega;
+    return {v, omega}; // Linear velocity, yaw rate
+}
+
+
+std::tuple<std::pair<double, double>, std::vector<size_t>> estimateEgoMotion(
     const std::vector<Eigen::Vector3d> &directions,
     const std::vector<double> &dopplers,
     double ransac_threshold,
@@ -123,9 +140,16 @@ Eigen::Vector3d estimateEgoMotion(
     }
 
     // Step 2: Velocity profile analysis (LSQ)
-    Eigen::Vector3d sensor_velocity = estimateEgoVelocity(filtered_directions, filtered_dopplers);
+    Eigen::Vector2d sensor_velocity = estimateSensorVelocity(filtered_directions, filtered_dopplers);
 
-    return sensor_velocity;
+
+    // Step 3: Ego motion calculation
+    double sensor_mount_angle = -0.027995081; // -1.604 degrees
+    double sensor_offset_y = 0; // meters
+    double sensor_offset_x = 1.31; // meters
+    std::pair<double, double> ego_motion = calculateEgoMotion(sensor_velocity, sensor_mount_angle, sensor_offset_x, sensor_offset_y);
+    
+    return {ego_motion, stationary_indices};
 }
 
 }  // namespace kiss_icp::core

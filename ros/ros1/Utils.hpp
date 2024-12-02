@@ -245,8 +245,9 @@ inline std::vector<double> GetDopplersFromPointCloud2(const PointCloud2::ConstPt
 }
 
 inline Sophus::SE3d GetVehicleToLidarTransform(const std::string &run_id, const std::string &cloud_frame_id) {
-    const auto T_V_S = Sophus::SE3d();  // TODO : Currently assuming T_V_L = I.
-    return T_V_S;
+    Eigen::Vector3d translation(1.31, 0, 0);
+    Sophus::SE3d::QuaternionType rotation(0.99988974, 0, 0, -0.01484945);
+    return Sophus::SE3d(rotation, translation);
 }
 
 inline void TransformPoints(const Sophus::SE3d &T, std::vector<Eigen::Vector3d> &points) {

@@ -30,7 +30,7 @@
 
 namespace kiss_icp {
 
-Sophus::SE3d RegisterFrame(const std::vector<Eigen::Vector3d> &frame,
+Sophus::SE3d RegisterFrame(std::vector<Eigen::Vector3d> &frame,
                            const VoxelHashMap &voxel_map,
                            const std::vector<double> &dopplers,
                            const std::vector<Eigen::Vector3d> &directions,

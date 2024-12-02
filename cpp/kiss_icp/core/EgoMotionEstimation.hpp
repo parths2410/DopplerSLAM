@@ -16,11 +16,17 @@ std::vector<size_t> detectStationaryTargets(
     double ransac_threshold,
     int max_iterations = 100);
 
-Eigen::Vector3d estimateEgoVelocity(
+Eigen::Vector2d estimateSensorVelocity(
     const std::vector<Eigen::Vector3d> &directions,
     const std::vector<double> &dopplers);
 
-Eigen::Vector3d estimateEgoMotion(
+std::pair<double, double> calculateEgoMotion(
+    const Eigen::Vector2d &sensor_velocity,
+    double sensor_mount_angle,
+    double sensor_offset_x,
+    double sensor_offset_y);
+
+std::tuple<std::pair<double, double>, std::vector<size_t>> estimateEgoMotion(
     const std::vector<Eigen::Vector3d> &directions,
     const std::vector<double> &dopplers,
     double ransac_threshold,
