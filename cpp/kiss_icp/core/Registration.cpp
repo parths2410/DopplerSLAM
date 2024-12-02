@@ -149,18 +149,21 @@ std::tuple<Eigen::Matrix6d, Eigen::Vector6d> BuildLinearSystem(
 
         const double w_geometric = TukeyWeight(kernel_geometric, residual_geometric.squaredNorm());
         const double w_doppler = TukeyWeight(kernel_doppler, residual_doppler*residual_doppler);
+        (void)w_geometric;
+        (void)w_doppler;
+
         result.JTJ.noalias() += J_r_geometric.transpose() * std::sqrt(w_geometric) * J_r_geometric;
         result.JTr.noalias() += J_r_geometric.transpose() * std::sqrt(w_geometric) * residual_geometric * lambda_geometric;
         result.JTJ.noalias() += J_r_doppler.transpose() * std::sqrt(w_doppler) * J_r_doppler;
         result.JTr.noalias() += J_r_doppler.transpose() * std::sqrt(w_doppler) * residual_doppler * lambda_doppler;
 
         // std::cout << std::fixed << std::setprecision(3) << "[kiss_icp::BuildLinearSystem] residual_geometric = " << residual_geometric.norm() << " weight = " << std::sqrt(w_geometric) << std::endl;
-        std::cout << std::fixed << std::setprecision(3) << "[kiss_icp::BuildLinearSystem] residual_doppler = " << residual_doppler << " weight = " << std::sqrt(w_doppler) << std::endl;
+        // std::cout << std::fixed << std::setprecision(3) << "[kiss_icp::BuildLinearSystem] residual_doppler = " << residual_doppler << " weight = " << std::sqrt(w_doppler) << std::endl;
     }
 
-    // if (num_outliers > 0) {
-    //     std::cout << std::fixed << std::setprecision(3) << "[kiss_icp::BuildLinearSystem] iter = " << iteration << " :: num_outliers = " << num_outliers << " :: dopplers_mean = " << std::accumulate(dopplers_in_S.begin(), dopplers_in_S.end(), 0.0) / double(source.size()) << " :: dopplers_pred_mean = " << std::accumulate(dopplers_pred_in_S.begin(), dopplers_pred_in_S.end(), 0.0) / double(source.size()) << " :: outlier_dopplers_mean = " << std::accumulate(outlier_residual_dopplers.begin(), outlier_residual_dopplers.end(), 0.0) / double(outlier_residual_dopplers.size()) << std::endl;
-    // }
+    if (num_outliers > 0) {
+        std::cout << std::fixed << std::setprecision(3) << "[kiss_icp::BuildLinearSystem] iter = " << iteration << " :: num_outliers = " << num_outliers << " :: dopplers_mean = " << std::accumulate(dopplers_in_S.begin(), dopplers_in_S.end(), 0.0) / double(source.size()) << " :: dopplers_pred_mean = " << std::accumulate(dopplers_pred_in_S.begin(), dopplers_pred_in_S.end(), 0.0) / double(source.size()) << " :: outlier_dopplers_mean = " << std::accumulate(outlier_residual_dopplers.begin(), outlier_residual_dopplers.end(), 0.0) / double(outlier_residual_dopplers.size()) << std::endl;
+    }
     return std::make_tuple(result.JTJ, result.JTr);
 }
 
@@ -250,7 +253,9 @@ Sophus::SE3d RegisterFrame(std::vector<Eigen::Vector3d> &frame,
         (void)kernel;
         // Equation (11)
         // TODO: Why are src_dirs in Vehicle frame and not in Sensor frame?
-        const auto &[JTJ, JTr] = BuildLinearSystem(j, src, tgt, dplrs_in_S, src_dirs_in_V, T_V_S, v_s_in_S, 0.5, 0.2, lambda_doppler, period);
+        double kernel_geometric = 0.5;
+        double kernel_doppler = 0.2;
+        const auto &[JTJ, JTr] = BuildLinearSystem(j, src, tgt, dplrs_in_S, src_dirs_in_V, T_V_S, v_s_in_S, kernel_geometric, kernel_doppler, lambda_doppler, period);
         const Eigen::Vector6d dx = JTJ.ldlt().solve(-JTr);
         const Sophus::SE3d estimation = Sophus::SE3d::exp(dx);
         // Equation (12)
